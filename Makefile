@@ -53,11 +53,11 @@ run-app: build-app up
 	- docker rm -f $(APP_NAME) 2>/dev/null || true
 	docker run -d --name $(APP_NAME) \
 		--network $(COMPOSE_NETWORK) \
-		-p 8080:8080 \
+		-p 8081:8081 \
 		--env-file ./.env \
 		-e DB_HOST=postgres \
 		$(APP_IMAGE)
-	@echo ">>> App is running: http://localhost:8080/health"
+	@echo ">>> App is running: http://localhost:8081/health"
 
 # Остановить только приложение
 stop-app:

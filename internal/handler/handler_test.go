@@ -14,14 +14,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// --- minimal mock of service.EmployeeService ---
-
 type mockService struct {
 	CreateFn func(ctx context.Context, e *domain.Employee) error
 	GetFn    func(ctx context.Context, id int) (*domain.Employee, error)
 	GetAllFn func(ctx context.Context) ([]*domain.Employee, error)
 	UpdateFn func(ctx context.Context, e *domain.Employee) error
 	DeleteFn func(ctx context.Context, id int) error
+	SearchFn func(ctx context.Context, query string) ([]*domain.Employee, error) // Added
 }
 
 func (m *mockService) CreateEmployee(ctx context.Context, e *domain.Employee) error {
@@ -30,29 +29,41 @@ func (m *mockService) CreateEmployee(ctx context.Context, e *domain.Employee) er
 	}
 	return nil
 }
+
 func (m *mockService) GetEmployee(ctx context.Context, id int) (*domain.Employee, error) {
 	if m.GetFn != nil {
 		return m.GetFn(ctx, id)
 	}
 	return nil, nil
 }
+
 func (m *mockService) GetAllEmployees(ctx context.Context) ([]*domain.Employee, error) {
 	if m.GetAllFn != nil {
 		return m.GetAllFn(ctx)
 	}
 	return nil, nil
 }
+
 func (m *mockService) UpdateEmployee(ctx context.Context, e *domain.Employee) error {
 	if m.UpdateFn != nil {
 		return m.UpdateFn(ctx, e)
 	}
 	return nil
 }
+
 func (m *mockService) DeleteEmployee(ctx context.Context, id int) error {
 	if m.DeleteFn != nil {
 		return m.DeleteFn(ctx, id)
 	}
 	return nil
+}
+
+// Added SearchEmployees method
+func (m *mockService) SearchEmployees(ctx context.Context, query string) ([]*domain.Employee, error) {
+	if m.SearchFn != nil {
+		return m.SearchFn(ctx, query)
+	}
+	return []*domain.Employee{}, nil
 }
 
 func newRouter(svc *mockService) *mux.Router {
@@ -63,7 +74,7 @@ func newRouter(svc *mockService) *mux.Router {
 	return r
 }
 
-// --- tests ---
+// --- existing tests ---
 
 func TestCreateEmployee_Success(t *testing.T) {
 	svc := &mockService{
@@ -180,5 +191,164 @@ func TestDeleteEmployee_Success(t *testing.T) {
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected %d, got %d", http.StatusNoContent, rr.Code)
+	}
+}
+
+// --- new search tests ---
+
+func TestSearchEmployees_Success(t *testing.T) {
+	svc := &mockService{
+		SearchFn: func(ctx context.Context, query string) ([]*domain.Employee, error) {
+			// Mock search results based on query
+			if query == "john" {
+				return []*domain.Employee{
+					{ID: 1, Name: "John Doe", Phone: "+77777777777", City: "Almaty"},
+					{ID: 2, Name: "John Smith", Phone: "+77777777778", City: "Astana"},
+				}, nil
+			}
+			if query == "777" {
+				return []*domain.Employee{
+					{ID: 1, Name: "John Doe", Phone: "+77777777777", City: "Almaty"},
+				}, nil
+			}
+			return []*domain.Employee{}, nil
+		},
+	}
+	r := newRouter(svc)
+
+	// Test search by name
+	req := httptest.NewRequest(http.MethodGet, "/api/employees/search?q=john", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var results []domain.EmployeeResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	if results[0].Name != "John Doe" || results[1].Name != "John Smith" {
+		t.Fatalf("unexpected search results: %+v", results)
+	}
+}
+
+func TestSearchEmployees_ByPhone(t *testing.T) {
+	svc := &mockService{
+		SearchFn: func(ctx context.Context, query string) ([]*domain.Employee, error) {
+			if query == "777" {
+				return []*domain.Employee{
+					{ID: 1, Name: "John Doe", Phone: "+77777777777", City: "Almaty"},
+				}, nil
+			}
+			return []*domain.Employee{}, nil
+		},
+	}
+	r := newRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/employees/search?q=777", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var results []domain.EmployeeResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Phone != "+77777777777" {
+		t.Fatalf("unexpected phone in search result: %s", results[0].Phone)
+	}
+}
+
+func TestSearchEmployees_EmptyQuery(t *testing.T) {
+	svc := &mockService{}
+	r := newRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/employees/search", nil) // No query parameter
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	var errResp domain.ErrorResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+
+	if errResp.Error == "" {
+		t.Fatalf("expected error message, got empty string")
+	}
+}
+
+func TestSearchEmployees_NoResults(t *testing.T) {
+	svc := &mockService{
+		SearchFn: func(ctx context.Context, query string) ([]*domain.Employee, error) {
+			return []*domain.Employee{}, nil // No results
+		},
+	}
+	r := newRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/employees/search?q=nonexistent", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var results []domain.EmployeeResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(results))
+	}
+}
+
+// Benchmark test for search performance
+func BenchmarkSearchEmployees(b *testing.B) {
+	svc := &mockService{
+		SearchFn: func(ctx context.Context, query string) ([]*domain.Employee, error) {
+			// Simulate realistic search results
+			results := make([]*domain.Employee, 50)
+			for i := range results {
+				results[i] = &domain.Employee{
+					ID:    i + 1,
+					Name:  "Employee " + string(rune(i)),
+					Phone: "+77777777777",
+					City:  "Almaty",
+				}
+			}
+			return results, nil
+		},
+	}
+	r := newRouter(svc)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/employees/search?q=test", nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			b.Fatalf("unexpected status code: %d", rr.Code)
+		}
 	}
 }

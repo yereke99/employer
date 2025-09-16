@@ -95,6 +95,54 @@ func (h *EmployeeHandler) GetEmployee(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
+// SearchEmployees поиск сотрудников по имени, телефону или городу
+// GET /api/employees/search?q=search_term
+func (h *EmployeeHandler) SearchEmployees(w http.ResponseWriter, r *http.Request) {
+	searchQuery := r.URL.Query().Get("q")
+	if searchQuery == "" {
+		h.writeErrorResponse(w, http.StatusBadRequest, "параметр поиска 'q' обязателен")
+		return
+	}
+
+	// Логирование поискового запроса
+	h.logger.Info("получен запрос на поиск сотрудников", 
+		zap.String("search_query", searchQuery),
+		zap.String("remote_addr", r.RemoteAddr))
+
+	employees, err := h.service.SearchEmployees(r.Context(), searchQuery)
+	if err != nil {
+		// Проверка на ошибку валидации
+		if validationErr, ok := err.(*service.ValidationError); ok {
+			h.writeErrorResponse(w, http.StatusBadRequest, validationErr.Error())
+			return
+		}
+		
+		h.logger.Error("ошибка поиска сотрудников", 
+			zap.Error(err), 
+			zap.String("search_query", searchQuery))
+		h.writeErrorResponse(w, http.StatusInternalServerError, "внутренняя ошибка сервера")
+		return
+	}
+
+	// Формирование ответа
+	response := make([]*domain.EmployeeResponse, len(employees))
+	for i, emp := range employees {
+		response[i] = &domain.EmployeeResponse{
+			ID:    emp.ID,
+			Name:  emp.Name,
+			Phone: emp.Phone,
+			City:  emp.City,
+		}
+	}
+
+	h.logger.Info("поиск сотрудников выполнен успешно", 
+		zap.String("search_query", searchQuery),
+		zap.Int("results_count", len(employees)))
+
+	h.writeJSONResponse(w, http.StatusOK, response)
+}
+
+
 // GetAllEmployees получает всех сотрудников
 // GET /api/employees
 func (h *EmployeeHandler) GetAllEmployees(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +241,7 @@ func (h *EmployeeHandler) DeleteEmployee(w http.ResponseWriter, r *http.Request)
 func (h *EmployeeHandler) RegisterRoutes(router *mux.Router) {
 	api := router.PathPrefix("/api/employees").Subrouter()
 
+	api.HandleFunc("/search", h.SearchEmployees).Methods("GET")
 	api.HandleFunc("", h.CreateEmployee).Methods("POST")
 	api.HandleFunc("", h.GetAllEmployees).Methods("GET")
 	api.HandleFunc("/{id:[0-9]+}", h.GetEmployee).Methods("GET")

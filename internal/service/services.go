@@ -14,6 +14,7 @@ type EmployeeService interface {
 	GetAllEmployees(ctx context.Context) ([]*domain.Employee, error)
 	UpdateEmployee(ctx context.Context, employee *domain.Employee) error
 	DeleteEmployee(ctx context.Context, id int) error
+	SearchEmployees(ctx context.Context, searchQuery string) ([]*domain.Employee, error)
 }
 
 // Services объединяет все сервисы

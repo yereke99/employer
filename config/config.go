@@ -32,7 +32,7 @@ func NewConfig() (*Config, error) {
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 
 		// Server
-		Port:        getEnv("PORT", "8080"),
+		Port:        getEnv("PORT", "8081"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}, nil
 }

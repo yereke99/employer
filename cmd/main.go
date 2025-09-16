@@ -40,7 +40,7 @@ func main() {
 		return
 	}
 
-	zapLogger.Info("запуск приложения TezJet",
+	zapLogger.Info("запуск приложения Emplyee",
 		zap.String("environment", cfg.Environment),
 		zap.String("port", cfg.Port),
 		zap.String("db_name", cfg.DBName),

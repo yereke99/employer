@@ -4,6 +4,7 @@ import (
 	"context"
 	"employer/internal/domain"
 	"employer/internal/repository"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -20,6 +21,33 @@ func NewEmployeeService(repo repository.EmployeeRepository, logger *zap.Logger) 
 		repo:   repo,
 		logger: logger,
 	}
+}
+
+func (s *employeeService) SearchEmployees(ctx context.Context, searchQuery string) ([]*domain.Employee, error) {
+    searchQuery = strings.TrimSpace(searchQuery)
+    
+    if searchQuery == "" {
+        return nil, &ValidationError{
+            Field:   "search_query",
+            Message: "поисковый запрос не может быть пустым",
+        }
+    }
+    
+    if len(searchQuery) < 2 {
+        return nil, &ValidationError{
+            Field:   "search_query", 
+            Message: "поисковый запрос должен содержать минимум 2 символа",
+        }
+    }
+    
+    if len(searchQuery) > 100 { // Add this validation
+        return nil, &ValidationError{
+            Field:   "search_query",
+            Message: "поисковый запрос не должен превышать 100 символов",
+        }
+    }
+    
+    return s.repo.SearchEmployees(ctx, searchQuery)
 }
 
 // CreateEmployee создает нового сотрудника

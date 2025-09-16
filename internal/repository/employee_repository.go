@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"employer/internal/domain"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -90,6 +91,67 @@ func (r *employeeRepository) GetAll(ctx context.Context) ([]*domain.Employee, er
 	return employees, nil
 }
 
+// SearchEmployees ищет сотрудников по имени, телефону или городу
+func (r *employeeRepository) SearchEmployees(ctx context.Context, searchQuery string) ([]*domain.Employee, error) {
+	// Валидация входных данных
+	searchQuery = strings.TrimSpace(searchQuery)
+	if searchQuery == "" {
+		r.logger.Warn("пустой поисковый запрос")
+		return []*domain.Employee{}, nil
+	}
+
+	// SQL запрос с поиском по всем полям
+	query := `
+		SELECT id, name, phone, city 
+		FROM employees 
+		WHERE LOWER(name) LIKE LOWER($1) 
+		   OR LOWER(phone) LIKE LOWER($1) 
+		   OR LOWER(city) LIKE LOWER($1)
+		ORDER BY 
+			CASE 
+				WHEN LOWER(name) LIKE LOWER($2) THEN 1
+				WHEN LOWER(phone) LIKE LOWER($2) THEN 2
+				WHEN LOWER(city) LIKE LOWER($2) THEN 3
+				ELSE 4
+			END,
+			name ASC
+		LIMIT 100`
+
+	searchPattern := "%" + searchQuery + "%"
+	exactSearchPattern := searchQuery + "%"
+
+	rows, err := r.db.QueryContext(ctx, query, searchPattern, exactSearchPattern)
+	if err != nil {
+		r.logger.Error("ошибка выполнения поискового запроса",
+			zap.Error(err),
+			zap.String("search_query", searchQuery))
+		return nil, fmt.Errorf("поиск сотрудников: %w", err)
+	}
+	defer rows.Close()
+
+	var employees []*domain.Employee
+	for rows.Next() {
+		employee := &domain.Employee{}
+		err := rows.Scan(&employee.ID, &employee.Name, &employee.Phone, &employee.City)
+		if err != nil {
+			r.logger.Error("ошибка сканирования результата поиска", zap.Error(err))
+			return nil, fmt.Errorf("сканирование результата поиска: %w", err)
+		}
+		employees = append(employees, employee)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("ошибка итерации по результатам поиска", zap.Error(err))
+		return nil, fmt.Errorf("итерация по результатам поиска: %w", err)
+	}
+
+	r.logger.Info("поиск сотрудников выполнен",
+		zap.String("search_query", searchQuery),
+		zap.Int("results_count", len(employees)))
+
+	return employees, nil
+}
+
 // Update обновляет сотрудника
 func (r *employeeRepository) Update(ctx context.Context, employee *domain.Employee) error {
 	query := `
@@ -162,6 +224,102 @@ func (r *employeeRepository) GetByPhone(ctx context.Context, phone string) (*dom
 	}
 
 	return employee, nil
+}
+
+// GetEmployeeStats получает статистику по сотрудникам (дополнительный метод)
+func (r *employeeRepository) GetEmployeeStats(ctx context.Context) (*EmployeeStats, error) {
+	query := `
+		SELECT 
+			COUNT(*) as total_count,
+			COUNT(DISTINCT city) as cities_count,
+			(SELECT city FROM employees GROUP BY city ORDER BY COUNT(*) DESC LIMIT 1) as most_common_city
+		FROM employees`
+
+	stats := &EmployeeStats{}
+	err := r.db.QueryRowContext(ctx, query).Scan(
+		&stats.TotalCount,
+		&stats.CitiesCount,
+		&stats.MostCommonCity,
+	)
+
+	if err != nil {
+		r.logger.Error("ошибка получения статистики сотрудников", zap.Error(err))
+		return nil, fmt.Errorf("получение статистики сотрудников: %w", err)
+	}
+
+	r.logger.Info("статистика сотрудников получена",
+		zap.Int("total", stats.TotalCount),
+		zap.Int("cities", stats.CitiesCount))
+
+	return stats, nil
+}
+
+// GetEmployeesByCity получает сотрудников по городу
+func (r *employeeRepository) GetEmployeesByCity(ctx context.Context, city string) ([]*domain.Employee, error) {
+	query := `SELECT id, name, phone, city FROM employees WHERE LOWER(city) = LOWER($1) ORDER BY name`
+
+	rows, err := r.db.QueryContext(ctx, query, city)
+	if err != nil {
+		r.logger.Error("ошибка получения сотрудников по городу",
+			zap.Error(err),
+			zap.String("city", city))
+		return nil, fmt.Errorf("получение сотрудников по городу: %w", err)
+	}
+	defer rows.Close()
+
+	var employees []*domain.Employee
+	for rows.Next() {
+		employee := &domain.Employee{}
+		err := rows.Scan(&employee.ID, &employee.Name, &employee.Phone, &employee.City)
+		if err != nil {
+			r.logger.Error("ошибка сканирования сотрудника по городу", zap.Error(err))
+			return nil, fmt.Errorf("сканирование сотрудника: %w", err)
+		}
+		employees = append(employees, employee)
+	}
+
+	if err = rows.Err(); err != nil {
+		r.logger.Error("ошибка итерации по сотрудникам города", zap.Error(err))
+		return nil, fmt.Errorf("итерация по сотрудникам: %w", err)
+	}
+
+	r.logger.Info("получены сотрудники по городу",
+		zap.String("city", city),
+		zap.Int("count", len(employees)))
+
+	return employees, nil
+}
+
+// CheckPhoneExists проверяет существование телефона
+func (r *employeeRepository) CheckPhoneExists(ctx context.Context, phone string, excludeID ...int) (bool, error) {
+	var query string
+	var args []interface{}
+
+	if len(excludeID) > 0 {
+		query = `SELECT EXISTS(SELECT 1 FROM employees WHERE phone = $1 AND id != $2)`
+		args = []interface{}{phone, excludeID[0]}
+	} else {
+		query = `SELECT EXISTS(SELECT 1 FROM employees WHERE phone = $1)`
+		args = []interface{}{phone}
+	}
+
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&exists)
+	if err != nil {
+		r.logger.Error("ошибка проверки существования телефона",
+			zap.Error(err),
+			zap.String("phone", phone))
+		return false, fmt.Errorf("проверка существования телефона: %w", err)
+	}
+
+	return exists, nil
+}
+
+// EmployeeStats статистика сотрудников
+type EmployeeStats struct {
+	TotalCount     int    `json:"total_count"`
+	CitiesCount    int    `json:"cities_count"`
+	MostCommonCity string `json:"most_common_city"`
 }
 
 // NotFoundError ошибка "не найден"

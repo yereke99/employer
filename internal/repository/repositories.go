@@ -15,7 +15,15 @@ type EmployeeRepository interface {
 	GetAll(ctx context.Context) ([]*domain.Employee, error)
 	Update(ctx context.Context, employee *domain.Employee) error
 	Delete(ctx context.Context, id int) error
+
+	// Поиск и фильтрация
+	SearchEmployees(ctx context.Context, searchQuery string) ([]*domain.Employee, error)
 	GetByPhone(ctx context.Context, phone string) (*domain.Employee, error)
+	GetEmployeesByCity(ctx context.Context, city string) ([]*domain.Employee, error)
+
+	// Дополнительные методы
+	GetEmployeeStats(ctx context.Context) (*EmployeeStats, error)
+	CheckPhoneExists(ctx context.Context, phone string, excludeID ...int) (bool, error)
 }
 
 // Repositories объединяет все репозитории
