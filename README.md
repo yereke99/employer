@@ -20,8 +20,8 @@ CRUD-сервис для сотрудников на **Go** + **Postgres**.
    curl http://localhost:8080/health
    ```
 
-4. Swagger UI:  
-   [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)
+4. Front-End:  
+   https://meily.kz
 
 ## Тесты
 ```
