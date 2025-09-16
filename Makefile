@@ -11,12 +11,6 @@ COMPOSE_NETWORK := build_default       # сеть compose (для папки bui
 test:
 	go test ./... -count=1
 
-# Генерация Swagger-доков
-swagger:
-	@echo ">>> Generating Swagger docs..."
-	go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/main.go -o ./docs
-	@echo ">>> Swagger docs generated in ./docs"
-
 # Поднять только Postgres
 up:
 	$(COMPOSE) up -d postgres

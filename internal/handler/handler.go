@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -29,18 +30,6 @@ func NewEmployeeHandler(service service.EmployeeService, logger *zap.Logger) *Em
 
 // CreateEmployee создает нового сотрудника
 // POST /api/employees
-// CreateEmployee создает нового сотрудника
-// POST /api/employees
-// @Summary      Создать сотрудника
-// @Description  Создает нового сотрудника
-// @Tags         employees
-// @Accept       json
-// @Produce      json
-// @Param        request  body      domain.CreateEmployeeRequest true  "Данные сотрудника"
-// @Success      201      {object}  domain.EmployeeResponse
-// @Failure      400      {object}  domain.ErrorResponse        "некорректный JSON / ошибка валидации"
-// @Failure      500      {object}  domain.ErrorResponse        "внутренняя ошибка сервера"
-// @Router       /api/employees [post]
 func (h *EmployeeHandler) CreateEmployee(w http.ResponseWriter, r *http.Request) {
 	var req domain.CreateEmployeeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -77,16 +66,6 @@ func (h *EmployeeHandler) CreateEmployee(w http.ResponseWriter, r *http.Request)
 
 // GetEmployee получает сотрудника по ID
 // GET /api/employees/{id}
-// @Summary      Получить сотрудника
-// @Description  Возвращает сотрудника по ID
-// @Tags         employees
-// @Produce      json
-// @Param        id   path      int  true  "Employee ID"
-// @Success      200  {object}  domain.EmployeeResponse
-// @Failure      400  {object}  domain.ErrorResponse  "некорректный ID"
-// @Failure      404  {object}  domain.ErrorResponse  "сотрудник не найден"
-// @Failure      500  {object}  domain.ErrorResponse  "внутренняя ошибка сервера"
-// @Router       /api/employees/{id} [get]
 func (h *EmployeeHandler) GetEmployee(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -118,13 +97,6 @@ func (h *EmployeeHandler) GetEmployee(w http.ResponseWriter, r *http.Request) {
 
 // GetAllEmployees получает всех сотрудников
 // GET /api/employees
-// @Summary      Получить всех сотрудников
-// @Description  Возвращает список сотрудников
-// @Tags         employees
-// @Produce      json
-// @Success      200  {array}   domain.EmployeeResponse
-// @Failure      500  {object}  domain.ErrorResponse  "внутренняя ошибка сервера"
-// @Router       /api/employees [get]
 func (h *EmployeeHandler) GetAllEmployees(w http.ResponseWriter, r *http.Request) {
 	employees, err := h.service.GetAllEmployees(r.Context())
 	if err != nil {
@@ -148,18 +120,6 @@ func (h *EmployeeHandler) GetAllEmployees(w http.ResponseWriter, r *http.Request
 
 // UpdateEmployee обновляет сотрудника
 // PUT /api/employees/{id}
-// @Summary      Обновить сотрудника
-// @Description  Обновляет данные сотрудника по ID
-// @Tags         employees
-// @Accept       json
-// @Produce      json
-// @Param        id       path      int                            true  "Employee ID"
-// @Param        request  body      domain.UpdateEmployeeRequest   true  "Данные сотрудника"
-// @Success      200      {object}  domain.EmployeeResponse
-// @Failure      400      {object}  domain.ErrorResponse  "некорректный ID / некорректный JSON / ошибка валидации"
-// @Failure      404      {object}  domain.ErrorResponse  "сотрудник не найден"
-// @Failure      500      {object}  domain.ErrorResponse  "внутренняя ошибка сервера"
-// @Router       /api/employees/{id} [put]
 func (h *EmployeeHandler) UpdateEmployee(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -208,16 +168,6 @@ func (h *EmployeeHandler) UpdateEmployee(w http.ResponseWriter, r *http.Request)
 
 // DeleteEmployee удаляет сотрудника
 // DELETE /api/employees/{id}
-// @Summary      Удалить сотрудника
-// @Description  Удаляет сотрудника по ID
-// @Tags         employees
-// @Produce      json
-// @Param        id   path      int  true  "Employee ID"
-// @Success      204  "No Content"
-// @Failure      400  {object}  domain.ErrorResponse  "некорректный ID"
-// @Failure      404  {object}  domain.ErrorResponse  "сотрудник не найден"
-// @Failure      500  {object}  domain.ErrorResponse  "внутренняя ошибка сервера"
-// @Router       /api/employees/{id} [delete]
 func (h *EmployeeHandler) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
@@ -248,6 +198,28 @@ func (h *EmployeeHandler) RegisterRoutes(router *mux.Router) {
 	api.HandleFunc("/{id:[0-9]+}", h.GetEmployee).Methods("GET")
 	api.HandleFunc("/{id:[0-9]+}", h.UpdateEmployee).Methods("PUT")
 	api.HandleFunc("/{id:[0-9]+}", h.DeleteEmployee).Methods("DELETE")
+}
+
+// ServeEmployeePage обслуживает страницу управления сотрудниками
+// GET /
+// GET /employees
+func (h *EmployeeHandler) ServeEmployeePage(w http.ResponseWriter, r *http.Request) {
+	// Путь к статическому файлу
+	staticPath := filepath.Join("static", "employee.html")
+
+	// Устанавливаем заголовки
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// Обслуживаем файл
+	http.ServeFile(w, r, staticPath)
+
+	h.logger.Info("employee page served",
+		zap.String("remote_addr", r.RemoteAddr),
+		zap.String("user_agent", r.UserAgent()),
+	)
 }
 
 // Вспомогательные методы
